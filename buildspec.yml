@@ -1,19 +1,58 @@
 version: 0.2
+env:
+    git-credential-helper: yes
 
 phases:
-  install:
-    runtime-versions:
-      python: 3.9
   pre_build:
     commands:
+      - |
+        echo "CODEBUILD_SOURCE_VERSION: $CODEBUILD_SOURCE_VERSION"
+        IDENTIFIER=$(echo "$CODEBUILD_SOURCE_VERSION" | cut -d'/' -f2)
+        echo "IDENTIFIER: $IDENTIFIER"
+        IDENTIFIER=$(echo "$IDENTIFIER" | xargs)
+        echo "IDENTIFIER2: $IDENTIFIER"
+        if [ "$IDENTIFIER" = "django-prod" ]; then
+          ENVIRONMENT="prod"
+          REPOSITORY_URI=412676116910.dkr.ecr.ap-south-1.amazonaws.com/django-sample-app-repo
+        elif [ "$IDENTIFIER" = "django-qa" ]; then
+          ENVIRONMENT="qa"
+          REPOSITORY_URI=412676116910.dkr.ecr.ap-south-1.amazonaws.com/django-sample-app-repo-qa
+        else
+          ENVIRONMENT="dev"
+          REPOSITORY_URI=412676116910.dkr.ecr.ap-south-1.amazonaws.com/django-sample-app-repo-dev
+        fi
+        export ENVIRONMENT
+        echo "Environment is set to $ENVIRONMENT"
+        
       - echo Logging in to Amazon ECR...
-      - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+      - aws --version
+      - aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin 412676116910.dkr.ecr.ap-south-1.amazonaws.com
+      
+      - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
+      - IMAGE_TAG=${COMMIT_HASH:=latest}
+      
+      - |
+        SECRET_NAME="ecs/secret/$ENVIRONMENT/django-$ENVIRONMENT"
+        SECRET_VALUE=$(aws secretsmanager get-secret-value --secret-id $SECRET_NAME --query SecretString --output text --region ap-south-1)
+        export SENDHUB_LOGGER_IP=$(echo $SECRET_VALUE | jq -r .SENDHUB_LOGGER_IP)
+        echo "Retrieved secret for SENDHUB_LOGGER_IP: $SENDHUB_LOGGER_IP"
+        
   build:
     commands:
+      - echo Build started on `date`
       - echo Building the Docker image...
-      - docker build -t $IMAGE_REPO_NAME:$IMAGE_TAG .
-      - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
+      - docker build --build-arg SENDHUB_LOGGER_IP=$SENDHUB_LOGGER_IP -t $REPOSITORY_URI:latest -f ./Dockerfile .
+      - docker tag $REPOSITORY_URI:latest $REPOSITORY_URI:$IMAGE_TAG
+
   post_build:
     commands:
-      - echo Pushing the Docker image...
-      - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
+      - echo Build completed on `date`
+      - docker push $REPOSITORY_URI:$IMAGE_TAG
+      - echo Writing imagedefinitions.json...
+      - echo '[{"name":"django-sample-app-container", "imageUri":"'"$REPOSITORY_URI:$IMAGE_TAG"'"}]' > imagedefinitions.json
+      - printf '{"ImageURI":"%s"}' $REPOSITORY_URI:$IMAGE_TAG > imageDetail.json
+
+artifacts:
+  files:
+    - imagedefinitions.json
+    - imageDetail.json
