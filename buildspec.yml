@@ -19,7 +19,7 @@ phases:
           REPOSITORY_URI=412676116910.dkr.ecr.ap-south-1.amazonaws.com/django-sample-app-repo-qa
         else
           ENVIRONMENT="dev"
-          REPOSITORY_URI=412676116910.dkr.ecr.ap-south-1.amazonaws.com/django-sample-app-repo-dev
+          REPOSITORY_URI=412676116910.dkr.ecr.ap-south-1.amazonaws.com/django-sample-app-repo
         fi
         export ENVIRONMENT
         echo "Environment is set to $ENVIRONMENT"
