@@ -1,5 +1,6 @@
 # Use an official Python runtime as a parent image
-FROM python:3.9-slim
+#FROM python:3.9-slim
+FROM 412676116910.dkr.ecr.ap-south-1.amazonaws.com/python3.9-slim:latest
 
 # Set the working directory in the container
 WORKDIR /app
